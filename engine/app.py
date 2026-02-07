@@ -2,17 +2,17 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pytz
+import time
+import pandas as pd
 
 class Engine(ABC):
     _price_config: dict = {}
     _price_data: dict = {}
     _is_connected = False
-    def __init__(self):
-        pass
 
-    @abstractmethod
-    def connect(self):
-        pass
+    def _connect(self):
+        print("connection established")
+        self._is_connected = True
 
     @abstractmethod
     def _set_price_data(self):
@@ -34,14 +34,30 @@ class Engine(ABC):
 
 
 class MT5Engine(Engine):
-    def __init__(self):
+    __mt5 = {}
+    def __init__(self, mt5):
+        self.__mt5 = mt5
         super().__init__()
 
-    def connect(self):
-        self._is_connected = True
+    def connect(self, login, password, server, path):
+        if self.__mt5.initialize(login=login, password=password, server=server, path=path):
+            self._connect()
+        time.sleep(2)
 
     def _set_price_data(self):
-        pass
+        daterange = self._price_config.get("daterange")
+        start_time, end_time = get_time_range(daterange)
+        timeframes = self._price_config.get("timeframes")
+        symbol = self._price_config.get("symbol")
+
+        for timeframe in timeframes:
+            rates = self.__mt5.copy_rates_range(symbol, get_mt5_timeframe(self.__mt5, timeframe), start_time, end_time)
+            if rates is None or len(rates) == 0:
+                raise ValueError("No data retrieved. Please check the symbol and connection.")
+
+            df = pd.DataFrame(rates)
+            df['time'] = pd.to_datetime(df['time'], unit='s')
+            self._price_data[timeframe] = df
 
 
 def get_mt5_timeframe(mt5, tf_string):
