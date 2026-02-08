@@ -4,11 +4,16 @@ from dateutil.relativedelta import relativedelta
 import pytz
 import time
 import pandas as pd
+from indicator_registry import  INDICATOR_REGISTRY
+from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
 
 class Engine(ABC):
     _price_config: dict = {}
     _price_data: dict = {}
     _is_connected = False
+    _registry = INDICATOR_REGISTRY
+    _executor = IndicatorExecutor(INDICATOR_REGISTRY)
+    _user_indicators = {}
 
     def _connect(self):
         print("connection established")
@@ -18,19 +23,68 @@ class Engine(ABC):
     def _set_price_data(self):
         pass
 
+    def set_custom_price_data(self, config: dict):
+        self._price_config = config
+        for idx, tf in enumerate(config.get("timeframes", [])):
+            self._price_data[tf] = config.get("custom_prices", [])[idx]
+
     def set_price_data(self, config: dict):
-        if not self._is_connected and not config.get("is_custom"):
+        if not self._is_connected:
             return 'connection is required to set price configuration'
         self._price_config = config
         self._set_price_data()
 
     def get_price(self, tf=None):
-        if not self._is_connected:
+        if not self._is_connected and not self._price_config.get("is_custom"):
             print('Connection is required')
             return False
         if not tf:
             return 'Timeframe is required'
         return self._price_data[tf]
+
+    def set_technical_indicators(self, indicators):
+        if not self._is_connected:
+            return 'connection is required to set price configuration'
+        validator = IndicatorValidator(self._registry, self._price_data)
+        for cfg in indicators:
+            # store the user-defined indicator
+            self._user_indicators[cfg["name"]] = cfg
+
+            # validate and compute
+            validator.validate(cfg)
+            df = self._price_data[cfg["timeframe"]]
+            values, outputs = self._executor.run(df, cfg)
+            ColumnWriter.write(df, cfg["name"], outputs, values)
+
+    def get_indicator_output(self, timeframe, name):
+        """
+        Return the list of column names in _price_data[timeframe] for a user-defined indicator.
+        Checks that the columns actually exist in that timeframe's DataFrame.
+        """
+        if name not in self._user_indicators:
+            raise ValueError(f"Indicator '{name}' is not defined")
+
+        if timeframe not in self._price_data:
+            raise ValueError(f"Timeframe '{timeframe}' does not exist in price data")
+
+        df = self._price_data[timeframe]
+        cfg = self._user_indicators[name]
+
+        meta = (
+                self._registry["indicators"].get(cfg["indicator"])
+                or self._registry["candlestick_patterns"].get(cfg["indicator"])
+        )
+
+        columns = []
+        for out_name in meta["outputs"]:
+            col_name = name if len(meta["outputs"]) == 1 else f"{name}_{out_name}"
+            if col_name in df.columns:
+                columns.append(col_name)
+            else:
+                # Optional: warn if column missing
+                print(f"Warning: Column '{col_name}' not found in timeframe '{timeframe}'")
+
+        return columns
 
 
 class MT5Engine(Engine):
@@ -58,7 +112,6 @@ class MT5Engine(Engine):
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s')
             self._price_data[timeframe] = df
-
 
 def get_mt5_timeframe(mt5, tf_string):
     mapping = {
