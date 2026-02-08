@@ -1,0 +1,6 @@
+/.idea
+engine/test.py
+*.csv
+/engine/__pycache__
+*.pyc
+*.pyc
