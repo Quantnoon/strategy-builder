@@ -6,6 +6,7 @@ import time
 import pandas as pd
 from indicator_registry import  INDICATOR_REGISTRY
 from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
+from signal import generate_can_trade
 
 class Engine(ABC):
     _price_config: dict = {}
@@ -86,6 +87,9 @@ class Engine(ABC):
 
         return columns
 
+    def set_signal(self, signal):
+        price_data = generate_can_trade(self._price_data, signal)
+        print("\nExample 1 - can_trade:\n", price_data["M15"]["can_trade"])
 
 class MT5Engine(Engine):
     __mt5 = {}
@@ -115,6 +119,7 @@ class MT5Engine(Engine):
 
 def get_mt5_timeframe(mt5, tf_string):
     mapping = {
+        "W1": mt5.TIMEFRAME_W1,
         "D1": mt5.TIMEFRAME_D1,
         "H4": mt5.TIMEFRAME_H4,
         "H1": mt5.TIMEFRAME_H1,
