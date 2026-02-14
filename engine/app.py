@@ -6,6 +6,7 @@ import time
 import pandas as pd
 from indicator_registry import  INDICATOR_REGISTRY
 from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
+from trade_signal import generate_signal
 
 class Engine(ABC):
     _price_config: dict = {}
@@ -86,6 +87,8 @@ class Engine(ABC):
 
         return columns
 
+    def set_signal(self, signal):
+        generate_signal(self._price_data, signal)
 
 class MT5Engine(Engine):
     __mt5 = {}
@@ -115,6 +118,7 @@ class MT5Engine(Engine):
 
 def get_mt5_timeframe(mt5, tf_string):
     mapping = {
+        "W1": mt5.TIMEFRAME_W1,
         "D1": mt5.TIMEFRAME_D1,
         "H4": mt5.TIMEFRAME_H4,
         "H1": mt5.TIMEFRAME_H1,
