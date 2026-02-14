@@ -6,7 +6,7 @@ import time
 import pandas as pd
 from indicator_registry import  INDICATOR_REGISTRY
 from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
-from signal import generate_can_trade
+from trade_signal import generate_signal
 
 class Engine(ABC):
     _price_config: dict = {}
@@ -88,8 +88,7 @@ class Engine(ABC):
         return columns
 
     def set_signal(self, signal):
-        price_data = generate_can_trade(self._price_data, signal)
-        print("\nExample 1 - can_trade:\n", price_data["M15"]["can_trade"])
+        generate_signal(self._price_data, signal)
 
 class MT5Engine(Engine):
     __mt5 = {}
