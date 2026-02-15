@@ -7,6 +7,7 @@ import pandas as pd
 from indicator_registry import  INDICATOR_REGISTRY
 from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
 from trade_signal import generate_signal
+from backtest import run_backtest
 
 class Engine(ABC):
     _price_config: dict = {}
@@ -15,6 +16,10 @@ class Engine(ABC):
     _registry = INDICATOR_REGISTRY
     _executor = IndicatorExecutor(INDICATOR_REGISTRY)
     _user_indicators = {}
+    _pip_size = 0
+    _pip_value = 0
+    _tick_size = 0
+    _tick_value = 0
 
     def _connect(self):
         print("connection established")
@@ -89,6 +94,23 @@ class Engine(ABC):
 
     def set_signal(self, signal):
         generate_signal(self._price_data, signal)
+        
+    def run_backtest(self, backtest_config, account_config):
+        trades = run_backtest(
+            self._price_data[backtest_config.get("timeframe")],
+            pip_size=self._pip_size,
+            pip_value=self._pip_value,
+            tick_size=self._tick_size,
+            tick_value=self._tick_value,
+            account_size=account_config.get("account_size"),
+            lot_size=account_config.get("lot_size"),
+            spread_pips=account_config.get("spread_pips"),
+            slippage_pips=account_config.get("slippage_pips"),
+            config=backtest_config,
+            mode=backtest_config.get("mode")
+        )
+        
+        return trades
 
 class MT5Engine(Engine):
     __mt5 = {}
@@ -106,15 +128,36 @@ class MT5Engine(Engine):
         start_time, end_time = get_time_range(daterange)
         timeframes = self._price_config.get("timeframes")
         symbol = self._price_config.get("symbol")
-
+        
+        self._pip_size = get_pip(self.__mt5, symbol)
+        self._pip_value = get_pip_value(self.__mt5, symbol)
+        self._tick_size = self.__mt5.symbol_info(symbol).trade_tick_size
+        self._tick_value = self.__mt5.symbol_info(symbol).trade_tick_value
+    
+        # Fetch all ticks once for the range
+        ticks = self.__mt5.copy_ticks_range(symbol, start_time, end_time, self.__mt5.COPY_TICKS_ALL)
+        if ticks is None or len(ticks) == 0:
+            raise ValueError("No tick data retrieved. Please check symbol and connection.")
+    
+        tick_df = pd.DataFrame(ticks)
+        tick_df['time'] = pd.to_datetime(tick_df['time'], unit='s')
+        tick_df = tick_df.sort_values('time')
+    
         for timeframe in timeframes:
+            # Fetch candles
             rates = self.__mt5.copy_rates_range(symbol, get_mt5_timeframe(self.__mt5, timeframe), start_time, end_time)
             if rates is None or len(rates) == 0:
-                raise ValueError("No data retrieved. Please check the symbol and connection.")
-
+                raise ValueError(f"No candle data retrieved for {timeframe}")
+    
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s')
+            df = df.sort_values('time')
+    
+            # Efficiently get last bid/ask for each candle using merge_asof
+            df = pd.merge_asof(df, tick_df[['time', 'bid', 'ask']], on='time', direction='backward')
+    
             self._price_data[timeframe] = df
+
 
 def get_mt5_timeframe(mt5, tf_string):
     mapping = {
@@ -172,3 +215,11 @@ def is_daterange_greater_than(daterange, years=0, months=0):
     target_time, _ = get_time_range(daterange)
     threshold_time = now - relativedelta(years=years, months=months)
     return target_time < threshold_time
+
+def get_pip(mt5, symbol):
+    return 10*mt5.symbol_info(symbol).point
+
+def get_pip_value(mt5, symbol):
+    tick_value = mt5.symbol_info(symbol).trade_tick_value
+    tick_size = mt5.symbol_info(symbol).trade_tick_size
+    return tick_value / tick_size * get_pip(mt5, symbol)
