@@ -8,6 +8,7 @@ from indicator_registry import  INDICATOR_REGISTRY
 from technical_indicators import IndicatorExecutor, IndicatorValidator, ColumnWriter
 from trade_signal import generate_signal
 from backtest import run_backtest
+from backtest_metrics import compute_backtest_metrics
 
 class Engine(ABC):
     _price_config: dict = {}
@@ -20,6 +21,8 @@ class Engine(ABC):
     _pip_value = 0
     _tick_size = 0
     _tick_value = 0
+    _backtest = None
+    _backtest_metrics = None
 
     def _connect(self):
         print("connection established")
@@ -96,7 +99,7 @@ class Engine(ABC):
         generate_signal(self._price_data, signal)
         
     def run_backtest(self, backtest_config, account_config):
-        trades = run_backtest(
+        self._backtest = run_backtest(
             self._price_data[backtest_config.get("timeframe")],
             pip_size=self._pip_size,
             pip_value=self._pip_value,
@@ -110,7 +113,9 @@ class Engine(ABC):
             mode=backtest_config.get("mode")
         )
         
-        return trades
+        self._backtest_metrics = compute_backtest_metrics(self._backtest)
+        
+        return self._backtest_metrics
 
 class MT5Engine(Engine):
     __mt5 = {}
