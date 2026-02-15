@@ -1,14 +1,14 @@
 SESSION_DEFINITIONS = {
-    "prev_day": {
-        "type": "higher_tf",
-        "timeframe": "D1",
-        "shift": 1
-    },
-    "last_week": {
-        "type": "higher_tf",
-        "timeframe": "W1",
-        "shift": 1
-    },
+    # "prev_day": {
+    #     "type": "higher_tf",
+    #     "timeframe": "D1",
+    #     "shift": 1
+    # },
+    # "last_week": {
+    #     "type": "higher_tf",
+    #     "timeframe": "W1",
+    #     "shift": 1
+    # },
     "london": {
         "type": "intraday",
         "start": "08:00",
